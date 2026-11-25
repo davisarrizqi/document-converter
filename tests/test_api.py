@@ -94,6 +94,93 @@ def test_docx_round_trip_metadata(client):
     assert client.get(converted.json["data"]["links"]["result"]).data.startswith(b"%PDF-")
 
 
+def test_direct_conversion_returns_file(client):
+    response = client.post(
+        "/api/v1/convert",
+        data={
+            "file": (io.BytesIO(minimal_pdf()), "Quarterly Report.pdf"),
+            "output": "file",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 201
+    assert response.data.startswith(b"PK")
+    assert response.headers["Content-Type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert "Quarterly Report.docx" in response.headers["Content-Disposition"]
+    assert response.headers["X-Conversion-Id"]
+    assert response.headers["Location"].endswith(response.headers["X-Conversion-Id"])
+    assert client.get("/api/v1/documents").json["meta"]["total"] == 2
+    assert client.get("/api/v1/conversions").json["meta"]["total"] == 1
+
+
+def test_direct_conversion_returns_link(client):
+    response = client.post(
+        "/api/v1/convert",
+        data={
+            "file": (io.BytesIO(minimal_docx()), "notes.docx"),
+            "output": "LINK",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 201
+    assert response.json["output"] == "link"
+    assert response.json["link"] == response.json["data"]["links"]["result"]
+    assert response.json["data"]["status"] == "completed"
+    result = client.get(response.json["link"])
+    assert result.status_code == 200
+    assert result.data.startswith(b"%PDF-")
+
+
+def test_direct_conversion_validates_output(client):
+    missing = client.post(
+        "/api/v1/convert",
+        data={"file": (io.BytesIO(minimal_pdf()), "notes.pdf")},
+        content_type="multipart/form-data",
+    )
+    assert missing.status_code == 422
+    assert missing.json["error"]["details"] == [
+        {"field": "output", "message": "This field is required."}
+    ]
+
+    invalid = client.post(
+        "/api/v1/convert",
+        data={
+            "file": (io.BytesIO(minimal_pdf()), "notes.pdf"),
+            "output": "base64",
+            "note": "not allowed",
+        },
+        content_type="multipart/form-data",
+    )
+    assert invalid.status_code == 422
+    assert {item["field"] for item in invalid.json["error"]["details"]} == {"note", "output"}
+    assert client.get("/api/v1/documents").json["meta"]["total"] == 0
+
+    no_extra = client.post(
+        "/api/v1/convert",
+        data={
+            "file": (io.BytesIO(minimal_pdf()), "notes.pdf"),
+            "output": "base64",
+        },
+        content_type="multipart/form-data",
+    )
+    assert no_extra.status_code == 422
+    assert {item["field"] for item in no_extra.json["error"]["details"]} == {"output"}
+
+
+def test_debug_api_tester(client):
+    response = client.get("/web/debug")
+
+    assert response.status_code == 200
+    assert response.content_type.startswith("text/html")
+    assert b'id="request-form"' in response.data
+    assert b"/api/v1/convert" in response.data
+    assert b"new FormData" in response.data
+
+
 def test_rejects_same_format_without_creating_a_job(client):
     created = upload(client, "notes.pdf", minimal_pdf())
     document_id = created.json["data"]["id"]

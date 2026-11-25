@@ -14,8 +14,10 @@ All resource routes live under `/api/v1`. The API is not authenticated.
 - [Errors](#errors)
 - [Service index](#get-)
 - [Health](#get-apiv1health)
+- [Direct conversion](#post-apiv1convert)
 - [Documents](#documents)
 - [Conversions](#conversions)
+- [Web API tester](#get-webdebug)
 - [Validation rules](#validation-rules)
 
 ## Conventions
@@ -135,8 +137,10 @@ Service index. Useful as a sanity check from a browser.
     "version": "1.0.0",
     "resources": {
       "health": "/api/v1/health",
+      "convert": "/api/v1/convert",
       "documents": "/api/v1/documents",
-      "conversions": "/api/v1/conversions"
+      "conversions": "/api/v1/conversions",
+      "debug": "/web/debug"
     }
   }
 }
@@ -160,6 +164,41 @@ Checks that the process can run `SELECT 1` against SQLite.
 ```
 
 **Response `503`** when SQLite cannot be opened. `status` is `degraded` and `database_status` is `error`. `database` stays `sqlite` so clients know which engine was configured.
+
+## POST /api/v1/convert
+
+Upload a PDF or DOCX and synchronously convert it to the opposite format in one request.
+This creates a source document, an output document, and a conversion record.
+
+**Request**
+
+- `Content-Type: multipart/form-data`
+- `file`: the PDF or DOCX upload
+- `output`: `file` to stream the converted bytes, or `link` to return conversion metadata
+- No other fields or files
+
+When `output=file`, the response is the converted file with `201`, an attachment
+`Content-Disposition`, and `X-Conversion-Id` and `X-Output-Document-Id` headers.
+`Location` points to the conversion resource.
+
+When `output=link`, the response is `201`:
+
+```json
+{
+  "data": {
+    "id": "6f1c4b0e-1a2b-4c3d-8e9f-001122334455",
+    "status": "completed",
+    "links": {
+      "result": "/api/v1/conversions/6f1c4b0e-1a2b-4c3d-8e9f-001122334455/result"
+    }
+  },
+  "link": "/api/v1/conversions/6f1c4b0e-1a2b-4c3d-8e9f-001122334455/result",
+  "output": "link"
+}
+```
+
+`output` is required and case-insensitive. Upload validation and conversion errors
+are the same as for the document and conversion endpoints.
 
 ## Documents
 
@@ -460,6 +499,12 @@ A second delete is `404`.
 
 **Errors:** `422` for a bad id, `404` if the conversion does not exist.
 
+## GET /web/debug
+
+Returns a browser-based API tester. It can send GET, POST, PUT, and DELETE requests;
+choose JSON or multipart bodies; inspect status and headers; and download binary
+responses.
+
 ## Validation rules
 
 These are enforced on the server. Clients should still check them to avoid a round trip.
@@ -474,5 +519,6 @@ These are enforced on the server. Clients should still check them to avoid a rou
 8. Query strings only accept the parameters listed for that route.
 9. Integers must be canonical decimal integers (`1`, `20`). `1.5`, `1e2`, and `+1` are rejected.
 10. After conversion, the output is inspected the same way. A converter that writes the wrong type fails the job.
+11. Direct conversion requires `output=file` or `output=link`.
 
 Every independent field problem in one request is returned in `details`. Example: a bad `document_id`, a missing `target_format`, and an unknown extra property are three entries in one `422`.

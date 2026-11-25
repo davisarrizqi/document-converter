@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
 from app.errors import ConflictError, ValidationError
-from app.validation import parse_conversion_body, parse_conversion_filters, parse_uuid_path
+from app.validation import (
+    OPPOSITE_FORMAT,
+    parse_conversion_body,
+    parse_conversion_filters,
+    parse_direct_conversion_output,
+    parse_uuid_path,
+    read_upload,
+)
 
 conversions_bp = Blueprint("conversions", __name__)
 
@@ -36,6 +45,62 @@ def create_conversion():
     response = jsonify({"data": conversion.to_api()})
     response.status_code = 201
     response.headers["Location"] = f"/api/v1/conversions/{conversion.id}"
+    return response
+
+
+@conversions_bp.post("/convert")
+def convert_upload():
+    container = _container()
+    extra = [name for name in request.files if name != "file"]
+    extra.extend(name for name in request.form if name != "output")
+    validation_errors: list[dict] = []
+    upload = None
+    output_type = None
+    try:
+        upload = read_upload(
+            request.files.get("file"),
+            max_bytes=container.settings.max_upload_bytes,
+            extra_fields=extra,
+        )
+    except ValidationError as exc:
+        validation_errors.extend(exc.details)
+    try:
+        output_type = parse_direct_conversion_output(request.form)
+    except ValidationError as exc:
+        validation_errors.extend(exc.details)
+    if validation_errors:
+        raise ValidationError(validation_errors)
+    assert upload is not None and output_type is not None
+
+    document = container.documents.create(upload)
+    conversion = container.conversions.create(
+        document.id,
+        OPPOSITE_FORMAT[document.format],
+    )
+    if not conversion.output_document_id:
+        raise ConflictError("The conversion did not produce an output document.")
+
+    result_link = f"/api/v1/conversions/{conversion.id}/result"
+    if output_type == "link":
+        body = conversion.to_api()
+        response = jsonify({"data": body, "link": result_link, "output": "link"})
+        response.status_code = 201
+        response.headers["Location"] = f"/api/v1/conversions/{conversion.id}"
+        return response
+
+    output_document = container.documents.get(conversion.output_document_id)
+    path = container.documents.open_path(output_document)
+    response = send_file(
+        BytesIO(path.read_bytes()),
+        mimetype=output_document.mime_type,
+        as_attachment=True,
+        download_name=output_document.filename,
+        max_age=0,
+    )
+    response.status_code = 201
+    response.headers["Location"] = f"/api/v1/conversions/{conversion.id}"
+    response.headers["X-Conversion-Id"] = conversion.id
+    response.headers["X-Output-Document-Id"] = output_document.id
     return response
 
 
@@ -77,7 +142,7 @@ def download_result(conversion_id: str):
     document = container.documents.get(conversion.output_document_id)
     path = container.documents.open_path(document)
     return send_file(
-        path,
+        BytesIO(path.read_bytes()),
         mimetype=document.mime_type,
         as_attachment=True,
         download_name=document.filename,

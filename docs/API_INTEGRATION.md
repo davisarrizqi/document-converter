@@ -10,6 +10,8 @@ http://127.0.0.1:5000
 
 Start it with the virtual environment from the [README](../README.md), then `python run.py`.
 
+For manual browser testing, open `http://127.0.0.1:5000/web/debug`.
+
 ## Integration model
 
 Treat the API as two resources.
@@ -85,6 +87,26 @@ Show `details[].message` to the user next to the field. Do not match on the top-
 The server repeats these checks. Doing them in the client avoids a wasted upload.
 
 ## curl
+
+### Convert in one request
+
+Return the converted file directly:
+
+```bash
+curl -sS -o notes.docx \
+  -F "file=@./notes.pdf" \
+  -F "output=file" \
+  http://127.0.0.1:5000/api/v1/convert
+```
+
+Or return JSON containing a download link:
+
+```bash
+curl -sS \
+  -F "file=@./notes.pdf" \
+  -F "output=link" \
+  http://127.0.0.1:5000/api/v1/convert
+```
 
 ### Health
 

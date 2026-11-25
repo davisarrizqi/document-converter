@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
 from app.validation import parse_cascade, parse_document_filters, parse_uuid_path, read_upload
@@ -71,7 +73,7 @@ def download_document(document_id: str):
     document = service.get(document_id)
     path = service.open_path(document)
     return send_file(
-        path,
+        BytesIO(path.read_bytes()),
         mimetype=document.mime_type,
         as_attachment=True,
         download_name=document.filename,

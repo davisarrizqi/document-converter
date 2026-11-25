@@ -12,8 +12,10 @@ The API is a Flask application. Metadata lives in **SQLite** (the default and on
 ## What it does
 
 - Upload a PDF or DOCX and get back a document resource.
+- Upload, convert, and receive the file in one request through `/api/v1/convert`.
 - Convert that document to the other format. PDF can only become DOCX. DOCX can only become PDF.
 - Download the result, list history, and delete documents or conversions.
+- Exercise the API from the browser tester at `/web/debug`.
 - Reject bad uploads before they are stored: size, extension, magic bytes, truncated PDFs, and oversized DOCX archives.
 - Record a failed conversion instead of pretending it never happened.
 - On startup, mark conversions that were interrupted by a crash as `failed`, and delete files that are no longer referenced.
@@ -251,6 +253,7 @@ This version does not migrate an existing file in place. If you change the schem
 | --- | --- | --- |
 | `GET` | `/` | Service index |
 | `GET` | `/api/v1/health` | Process and SQLite health |
+| `POST` | `/api/v1/convert` | Upload and convert in one request; return a file or link |
 | `POST` | `/api/v1/documents` | Upload a PDF or DOCX |
 | `GET` | `/api/v1/documents` | List documents |
 | `GET` | `/api/v1/documents/{id}` | Document metadata |
@@ -261,6 +264,7 @@ This version does not migrate an existing file in place. If you change the schem
 | `GET` | `/api/v1/conversions/{id}` | Conversion metadata |
 | `GET` | `/api/v1/conversions/{id}/result` | Download the converted file |
 | `DELETE` | `/api/v1/conversions/{id}` | Delete the conversion and its output |
+| `GET` | `/web/debug` | Browser API tester |
 
 Full request and response shapes: [docs/ENDPOINTS.md](docs/ENDPOINTS.md).
 

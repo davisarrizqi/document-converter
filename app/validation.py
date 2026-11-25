@@ -23,6 +23,7 @@ DOCX = "docx"
 FORMATS = {PDF, DOCX}
 ROLES = {"source", "output"}
 STATUSES = {"processing", "completed", "failed"}
+DIRECT_OUTPUTS = {"file", "link"}
 MIME_TYPES = {
     PDF: "application/pdf",
     DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -140,6 +141,23 @@ def parse_conversion_body(payload: object) -> tuple[str, str]:
     check.finish()
     assert document_id is not None and target_format is not None
     return document_id, target_format
+
+
+def parse_direct_conversion_output(form: ImmutableMultiDict) -> str:
+    check = _Check()
+    if "output" not in form:
+        check.add("output", "This field is required.")
+        output = None
+    else:
+        output = _required_choice(
+            check,
+            form.get("output"),
+            "output",
+            DIRECT_OUTPUTS,
+        )
+    check.finish()
+    assert output is not None
+    return output
 
 
 def read_upload(file: FileStorage | None, *, max_bytes: int, extra_fields: list[str]) -> AcceptedUpload:
